@@ -13,7 +13,7 @@ CORS(app)
 model = tf.keras.models.load_model("models/pneumonia_model.keras")
 
 IMG_SIZE = (224, 224)
-THRESHOLD = 0.55
+THRESHOLD = 0.50
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name="Conv_1"):
     grad_model = tf.keras.models.Model(

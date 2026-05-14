@@ -2,7 +2,7 @@ import os
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 
 # Paths
 TRAIN_PATH = "dataset/final/train"
@@ -12,7 +12,7 @@ MODEL_PATH = "models/pneumonia_model.keras"
 # Settings
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
-EPOCHS = 10
+EPOCHS = 15
 
 os.makedirs("models", exist_ok=True)
 
@@ -54,7 +54,14 @@ base_model = MobileNetV2(
     weights="imagenet",
 )
 
-base_model.trainable = False
+base_model.trainable = True
+
+# Fine-tune from this layer onwards
+fine_tune_at = 100
+
+# Freeze all the layers before the `fine_tune_at` layer
+for layer in base_model.layers[:fine_tune_at]:
+    layer.trainable = False
 
 # Build model
 inputs = layers.Input(shape=(224, 224, 3))
@@ -64,6 +71,8 @@ x = tf.keras.applications.mobilenet_v2.preprocess_input(x)
 
 x = base_model(x, training=False)
 x = layers.GlobalAveragePooling2D()(x)
+x = layers.BatchNormalization()(x)
+x = layers.Dense(128, activation="relu")(x)
 x = layers.Dropout(0.3)(x)
 
 outputs = layers.Dense(1, activation="sigmoid")(x)
@@ -72,7 +81,7 @@ model = tf.keras.Model(inputs, outputs)
 
 # Compile
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
     loss="binary_crossentropy",
     metrics=["accuracy"],
 )
@@ -82,13 +91,19 @@ model.summary()
 callbacks = [
     EarlyStopping(
         monitor="val_loss",
-        patience=3,
+        patience=4,
         restore_best_weights=True,
     ),
     ModelCheckpoint(
         MODEL_PATH,
         monitor="val_accuracy",
         save_best_only=True,
+    ),
+    ReduceLROnPlateau(
+        monitor="val_loss",
+        factor=0.2,
+        patience=2,
+        min_lr=1e-6,
     ),
 ]
 

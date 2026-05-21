@@ -1,9 +1,16 @@
 # Model files (too large for GitHub)
-models/*.keras
-models/*.h5
+models/**/*.keras
+models/**/*.h5
+models/**/*.weights.h5
+models/**/*.tflite
+models/**/*.onnx
+
+# Training logs
+logs/
 
 # Dataset (too large)
 dataset/
+nih_images/
 !dataset/stage2_train_metadata.csv
 
 # Python

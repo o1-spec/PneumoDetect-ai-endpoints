@@ -10,10 +10,11 @@ from io import BytesIO
 app = Flask(__name__)
 CORS(app)
 
-model = tf.keras.models.load_model("models/pneumonia_model.keras")
+# Load fine-tuned model (from 3-stage transfer learning pipeline)
+model = tf.keras.models.load_model("models/finetuned/mobilenetv2_rsna_final.keras")
 
 IMG_SIZE = (224, 224)
-THRESHOLD = 0.50
+THRESHOLD = 0.45
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name="Conv_1"):
     grad_model = tf.keras.models.Model(

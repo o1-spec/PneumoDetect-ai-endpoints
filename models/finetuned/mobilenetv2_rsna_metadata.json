@@ -1,0 +1,25 @@
+{
+  "architecture": "mobilenetv2",
+  "image_size": [
+    224,
+    224
+  ],
+  "batch_size": 32,
+  "epochs": 20,
+  "finetune_lr": 1e-05,
+  "pretrained_from": "ChestX-ray14",
+  "pretrained_weights": "models/pretrained/mobilenetv2_chestxray14_weights.weights.h5",
+  "class_weights": {
+    "0": 0.6454226629580361,
+    "1": 2.219126819126819
+  },
+  "final_metrics": {
+    "train_accuracy": 0.7687371373176575,
+    "train_loss": 0.45486414432525635,
+    "val_accuracy": 0.8268365859985352,
+    "val_loss": 0.3882565200328827,
+    "val_auc": 0.8601236343383789,
+    "val_precision": 0.6135621070861816,
+    "val_recall": 0.6247920393943787
+  }
+}

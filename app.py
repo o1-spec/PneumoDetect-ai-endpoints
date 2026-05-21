@@ -11,7 +11,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Load fine-tuned model (from 3-stage transfer learning pipeline)
-model = tf.keras.models.load_model("models/finetuned/mobilenetv2_rsna_final.keras")
+model = tf.keras.models.load_model("models/pneumonia_model.keras")
 
 IMG_SIZE = (224, 224)
 THRESHOLD = 0.45
@@ -38,7 +38,7 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name="Conv_1"):
     heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
 
-    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+    heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-8)
 
     return heatmap.numpy()
 

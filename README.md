@@ -1,4 +1,15 @@
+---
+title: PneumoDetect AI
+emoji: 🫁
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # PneumoDetect AI 🫁
+
 
 A deep learning model for pneumonia detection from chest X-ray images using transfer learning with MobileNetV2.
 

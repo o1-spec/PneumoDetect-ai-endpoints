@@ -22,7 +22,7 @@ MODEL_ARCHITECTURE = "resnet50"  # Options: resnet50, densenet121
 # Hyperparameters
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
-EPOCHS = 10  # Domain pretraining epochs
+EPOCHS = 4  # Domain pretraining epochs
 INITIAL_LR = 0.0001
 
 # Dynamic Paths based on architecture

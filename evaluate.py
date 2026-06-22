@@ -1,38 +1,94 @@
 import numpy as np
 import tensorflow as tf
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, roc_auc_score
+import os
 
 VAL_PATH = "dataset/final/val"
-MODEL_PATH = "models/pneumonia_model.keras"
+RESNET_MODEL_PATH = "models/finetuned/resnet50/resnet50_rsna_best.keras"
+DENSENET_MODEL_PATH = "models/finetuned/densenet121/densenet121_rsna_best.keras"
 
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
 
-val_ds = tf.keras.utils.image_dataset_from_directory(
+print("=" * 80)
+print("PneumoDetect AI - Ensemble Evaluation Pipeline")
+print("=" * 80)
+
+# Validate models exist
+if not os.path.exists(RESNET_MODEL_PATH):
+    raise FileNotFoundError(f"ResNet50 fine-tuned model not found: {RESNET_MODEL_PATH}")
+if not os.path.exists(DENSENET_MODEL_PATH):
+    raise FileNotFoundError(f"DenseNet121 fine-tuned model not found: {DENSENET_MODEL_PATH}")
+
+# 1. Load raw validation dataset (without normalization applied yet)
+print("\n[1/4] Loading raw validation dataset...")
+raw_val_ds = tf.keras.utils.image_dataset_from_directory(
     VAL_PATH,
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     shuffle=False,
 )
 
-class_names = val_ds.class_names
-print("Classes:", class_names)
+class_names = raw_val_ds.class_names
+print(f"✓ Classes detected: {class_names}")
 
 # Optimize dataset performance
 AUTOTUNE = tf.data.AUTOTUNE
-val_ds = val_ds.prefetch(AUTOTUNE)
 
-model = tf.keras.models.load_model(MODEL_PATH)
+# 2. Reconstruct correct preprocessed datasets for each backbone
+print("\n[2/4] Constructing backbone-specific preprocessed data streams...")
+resnet_ds = raw_val_ds.map(
+    lambda x, y: (tf.keras.applications.resnet50.preprocess_input(x), y),
+    num_parallel_calls=AUTOTUNE
+).prefetch(AUTOTUNE)
 
-print("Extracting true labels (this takes a moment)...")
-y_true = np.concatenate([y.numpy() for _, y in val_ds])
+densenet_ds = raw_val_ds.map(
+    lambda x, y: (tf.keras.applications.densenet.preprocess_input(x), y),
+    num_parallel_calls=AUTOTUNE
+).prefetch(AUTOTUNE)
 
-print("Generating predictions...")
-y_pred_probs = model.predict(val_ds).flatten()
+print("✓ ResNet50 preprocessing pipeline constructed")
+print("✓ DenseNet121 preprocessing pipeline constructed")
 
-auc_score = roc_auc_score(y_true, y_pred_probs)
-print(f"\nAUC-ROC: {auc_score:.4f}")
+# 3. Load both fine-tuned models
+print("\n[3/4] Loading deep models into memory...")
+print("  - Loading ResNet50...")
+resnet_model = tf.keras.models.load_model(RESNET_MODEL_PATH)
+print("  - Loading DenseNet121...")
+densenet_model = tf.keras.models.load_model(DENSENET_MODEL_PATH)
+print("✓ Both models loaded successfully")
 
+# 4. Extract true labels
+print("\nExtracting ground-truth labels...")
+y_true = np.concatenate([y.numpy() for _, y in raw_val_ds])
+print(f"Total validation samples: {len(y_true)}")
+
+# 5. Generate predictions
+print("Generating ResNet50 predictions...")
+y_pred_resnet = resnet_model.predict(resnet_ds, verbose=1).flatten()
+
+print("Generating DenseNet121 predictions...")
+y_pred_densenet = densenet_model.predict(densenet_ds, verbose=1).flatten()
+
+# Ensemble averaging
+print("Computing ensemble probabilities...")
+y_pred_probs = (y_pred_resnet + y_pred_densenet) / 2.0
+
+# 6. Evaluate Backbones and Ensemble
+auc_resnet = roc_auc_score(y_true, y_pred_resnet)
+auc_densenet = roc_auc_score(y_true, y_pred_densenet)
+auc_ensemble = roc_auc_score(y_true, y_pred_probs)
+
+print("\n" + "=" * 50)
+print("BACKBONE VS ENSEMBLE PERFORMANCE (AUC-ROC)")
+print("=" * 50)
+print(f"ResNet50 Model AUC-ROC:   {auc_resnet:.4f}")
+print(f"DenseNet121 Model AUC-ROC: {auc_densenet:.4f}")
+print(f"Dual Ensemble AUC-ROC:     {auc_ensemble:.4f}  <--")
+print("=" * 50)
+
+# Threshold search to maximize F1-score
+print("\nSearching for optimal decision threshold...")
 best_threshold = 0.5
 best_f1 = 0.0
 
@@ -43,11 +99,12 @@ for threshold in np.arange(0.1, 0.9, 0.05):
         best_f1 = f1
         best_threshold = threshold
 
-print(f"\nOptimal threshold: {best_threshold:.2f} (F1 score: {best_f1:.4f})")
+print(f"✓ Optimal threshold found: {best_threshold:.2f} (Validation F1: {best_f1:.4f})")
 
 y_pred = (y_pred_probs > best_threshold).astype("int32")
 
-print("\nClassification Report:")
+# Classification report
+print("\nClassification Report (Ensemble):")
 print(
     classification_report(
         y_true,
@@ -57,5 +114,11 @@ print(
     )
 )
 
-print("\nConfusion Matrix:")
-print(confusion_matrix(y_true, y_pred))
+# Confusion matrix
+print("Confusion Matrix:")
+cm = confusion_matrix(y_true, y_pred)
+print(cm)
+
+print("\n" + "=" * 80)
+print("EVALUATION STAGE COMPLETE")
+print("=" * 80)

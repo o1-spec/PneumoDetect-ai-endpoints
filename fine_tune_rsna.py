@@ -3,7 +3,7 @@ import json
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
-from tensorflow.keras.applications import MobileNetV2, DenseNet121, ResNet50
+from tensorflow.keras.applications import DenseNet121, ResNet50
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from sklearn.utils.class_weight import compute_class_weight
 
@@ -13,30 +13,37 @@ PRETRAINED_MODELS_DIR = "models/pretrained"
 FINETUNED_MODELS_DIR = "models/finetuned"
 LOGS_DIR = "logs/finetune"
 
+# ============================================================================
+# ARCHITECTURE CONFIGURATION (MUST MATCH PRETRAINING)
+# ============================================================================
+# Toggle between "resnet50" and "densenet121"
+MODEL_ARCHITECTURE = "resnet50"  # Options: resnet50, densenet121
+
 # Hyperparameters
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
-EPOCHS = 20  # Fine-tuning usually needs fewer epochs
-FINETUNE_LR = 0.00001  # Lower learning rate for fine-tuning
-UNFREEZE_AT = 100  # Unfreeze layers after this layer index
+EPOCHS = 20
+FINETUNE_LR = 0.00001  # Lighter LR for fine-tuning
 
-# Architecture (MUST match pretrained model)
-MODEL_ARCHITECTURE = "mobilenetv2"
+# Dynamic Paths
+PRETRAINED_MODEL_DIR = os.path.join(PRETRAINED_MODELS_DIR, MODEL_ARCHITECTURE)
+FINETUNED_MODEL_DIR = os.path.join(FINETUNED_MODELS_DIR, MODEL_ARCHITECTURE)
+
 PRETRAINED_WEIGHTS = os.path.join(
-    PRETRAINED_MODELS_DIR,
+    PRETRAINED_MODEL_DIR,
     f"{MODEL_ARCHITECTURE}_chestxray14_weights.weights.h5"
 )
 PRETRAINED_METADATA = os.path.join(
-    PRETRAINED_MODELS_DIR,
+    PRETRAINED_MODEL_DIR,
     f"{MODEL_ARCHITECTURE}_chestxray14_metadata.json"
 )
 
 # Create directories
-os.makedirs(FINETUNED_MODELS_DIR, exist_ok=True)
+os.makedirs(FINETUNED_MODEL_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 print("=" * 80)
-print("RSNA Fine-tuning Script")
+print(f"RSNA Pneumonia Fine-tuning: {MODEL_ARCHITECTURE.upper()}")
 print("=" * 80)
 print(f"\n📋 Configuration:")
 print(f"  Architecture: {MODEL_ARCHITECTURE}")
@@ -51,7 +58,7 @@ print("\n[1/6] Validating pretrained model...")
 if not os.path.exists(PRETRAINED_WEIGHTS):
     raise FileNotFoundError(
         f"Pretrained weights not found: {PRETRAINED_WEIGHTS}\n"
-        f"Please run: python pretrain_chestxray14.py"
+        f"Please run pretraining first: python pretrain_chestxray14.py"
     )
 print(f"✓ Pretrained weights found: {PRETRAINED_WEIGHTS}")
 
@@ -99,7 +106,7 @@ print("\n[3/6] Setting up data augmentation and optimization...")
 
 data_augmentation = tf.keras.Sequential([
     layers.RandomFlip("horizontal"),
-    layers.RandomRotation(0.05),  # Lighter augmentation for fine-tuning
+    layers.RandomRotation(0.05),
     layers.RandomZoom(0.1),
 ])
 
@@ -111,98 +118,94 @@ print("✓ Data augmentation (lighter for fine-tuning)")
 print("✓ Prefetching enabled")
 
 # ============================================================================
-# Step 4: Build Model with Pretrained Weights
+# Step 4: Build Model
 # ============================================================================
-print(f"\n[4/6] Building {MODEL_ARCHITECTURE.upper()} with pretrained weights...")
+print(f"\n[4/6] Building {MODEL_ARCHITECTURE.upper()} model...")
 
-# Select base model
-if MODEL_ARCHITECTURE == "mobilenetv2":
-    base_model = MobileNetV2(
+if MODEL_ARCHITECTURE == "resnet50":
+    base_model = ResNet50(
         input_shape=(224, 224, 3),
         include_top=False,
         weights="imagenet",
+        name="resnet50"
     )
 elif MODEL_ARCHITECTURE == "densenet121":
     base_model = DenseNet121(
         input_shape=(224, 224, 3),
         include_top=False,
         weights="imagenet",
-    )
-elif MODEL_ARCHITECTURE == "resnet50":
-    base_model = ResNet50(
-        input_shape=(224, 224, 3),
-        include_top=False,
-        weights="imagenet",
+        name="densenet121"
     )
 else:
     raise ValueError(f"Unknown architecture: {MODEL_ARCHITECTURE}")
 
-# Freeze base model initially
+# Base model is initially frozen
 base_model.trainable = False
 print(f"✓ Base model loaded: {MODEL_ARCHITECTURE}")
 
-# Build full model (SAME architecture as pretrain)
+# Build full model (SAME architecture and head names as pretraining)
 inputs = layers.Input(shape=(224, 224, 3))
 x = data_augmentation(inputs)
 
 # Preprocessing
-if MODEL_ARCHITECTURE == "mobilenetv2":
-    x = tf.keras.applications.mobilenet_v2.preprocess_input(x)
+if MODEL_ARCHITECTURE == "resnet50":
+    x = tf.keras.applications.resnet50.preprocess_input(x)
 elif MODEL_ARCHITECTURE == "densenet121":
     x = tf.keras.applications.densenet.preprocess_input(x)
-elif MODEL_ARCHITECTURE == "resnet50":
-    x = tf.keras.applications.resnet50.preprocess_input(x)
 
 x = base_model(x, training=False)
 
-# SAME classifier head as pretrain
-x = layers.GlobalAveragePooling2D()(x)
-x = layers.Dense(256, activation="relu")(x)
-x = layers.BatchNormalization()(x)
-x = layers.Dropout(0.5)(x)
-x = layers.Dense(128, activation="relu")(x)
-x = layers.BatchNormalization()(x)
-x = layers.Dropout(0.3)(x)
-outputs = layers.Dense(1, activation="sigmoid")(x)
+# Custom classifier head (with identical names to ensure perfect weight restoration)
+x = layers.GlobalAveragePooling2D(name="head_gap")(x)
+x = layers.Dense(256, activation="relu", name="head_dense1")(x)
+x = layers.BatchNormalization(name="head_bn1")(x)
+x = layers.Dropout(0.5, name="head_dropout1")(x)
+x = layers.Dense(128, activation="relu", name="head_dense2")(x)
+x = layers.BatchNormalization(name="head_bn2")(x)
+x = layers.Dropout(0.3, name="head_dropout2")(x)
+outputs = layers.Dense(1, activation="sigmoid", name="head_output")(x)
 
 model = tf.keras.Model(inputs, outputs)
-
-print("✓ Model architecture created (identical to pretrain)")
+print("✓ Model structure created")
 
 # ============================================================================
 # Step 5: Load Pretrained Weights
 # ============================================================================
-print("\n[5/6] Loading pretrained weights...")
+print("\n[5/6] Loading pretrained ChestX-ray14 weights...")
 
 try:
     model.load_weights(PRETRAINED_WEIGHTS)
-    print(f"✓ Pretrained weights loaded successfully")
-    print(f"  File: {PRETRAINED_WEIGHTS}")
+    print(f"✓ Pretrained weights loaded successfully: {PRETRAINED_WEIGHTS}")
 except Exception as e:
-    raise Exception(f"Error loading weights: {e}")
+    raise RuntimeError(f"Failed to load weights: {e}")
 
 # ============================================================================
-# Step 6: Prepare for Fine-tuning
+# Step 6: Block-Name Based Unfreezing for Fine-tuning
 # ============================================================================
-print("\n[6/6] Preparing for fine-tuning...")
+print("\n[6/6] Configuring trainable layers...")
 
-# Unfreeze top layers of base model for fine-tuning
-# First, make base_model trainable
+# First make the base model trainable
 base_model.trainable = True
 
-# Then freeze the bottom layers (keep early features frozen)
-for layer in base_model.layers[:UNFREEZE_AT]:
-    layer.trainable = False
+# Freeze everything except the final semantic block (conv5_ block)
+# For both ResNet50 and DenseNet121, block 5 layers are named start with "conv5_"
+for layer in base_model.layers:
+    if layer.name.startswith("conv5_"):
+        layer.trainable = True
+    else:
+        layer.trainable = False
 
-# Count trainable layers
-trainable_count = sum(1 for layer in model.layers if layer.trainable)
-frozen_count = sum(1 for layer in model.layers if not layer.trainable)
+# Count layers
+total_layers = len(model.layers)
+trainable_layers = sum(1 for layer in model.layers if layer.trainable)
+frozen_layers = sum(1 for layer in model.layers if not layer.trainable)
 
-print(f"✓ Unfroze layers after index {UNFREEZE_AT}")
-print(f"  Trainable layers: {trainable_count}")
-print(f"  Frozen layers: {frozen_count}")
+print(f"✓ Safe block-name based freezing applied (unfroze 'conv5_*' blocks)")
+print(f"  - Total layers in model: {total_layers}")
+print(f"  - Trainable layers: {trainable_layers}")
+print(f"  - Frozen layers: {frozen_layers}")
 
-# Compile with LOWER learning rate
+# Compile with low learning rate
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=FINETUNE_LR),
     loss="binary_crossentropy",
@@ -214,18 +217,14 @@ model.compile(
     ],
 )
 
-print(f"✓ Model compiled:")
-print(f"  Optimizer: Adam (lr={FINETUNE_LR})")
-print(f"  Loss: Binary Crossentropy")
-
+print(f"✓ Model compiled (lr={FINETUNE_LR})")
 model.summary()
 
 # ============================================================================
-# Step 7: Calculate Class Weights for RSNA
+# Step 7: Class Weights
 # ============================================================================
-print("\n[7/7] Calculating class weights for RSNA dataset...")
+print("\n[7/7] Computing class weights...")
 
-# Get class distribution from training data
 all_labels = []
 for _, labels in train_ds:
     all_labels.extend(labels.numpy().flatten())
@@ -239,7 +238,7 @@ weights_array = compute_class_weight(
 )
 
 class_weights_rsna = {0: float(weights_array[0]), 1: float(weights_array[1])}
-print(f"✓ RSNA class weights:")
+print(f"✓ Class weights for RSNA dataset:")
 print(f"  NORMAL (class 0): {class_weights_rsna[0]:.4f}")
 print(f"  PNEUMONIA (class 1): {class_weights_rsna[1]:.4f}")
 
@@ -247,6 +246,8 @@ print(f"  PNEUMONIA (class 1): {class_weights_rsna[1]:.4f}")
 # Step 8: Callbacks
 # ============================================================================
 print("\n[8/8] Setting up callbacks...")
+
+best_model_path = os.path.join(FINETUNED_MODEL_DIR, f"{MODEL_ARCHITECTURE}_rsna_best.keras")
 
 callbacks = [
     EarlyStopping(
@@ -256,7 +257,7 @@ callbacks = [
         verbose=1,
     ),
     ModelCheckpoint(
-        os.path.join(FINETUNED_MODELS_DIR, f"{MODEL_ARCHITECTURE}_rsna_best.keras"),
+        best_model_path,
         monitor="val_auc",
         save_best_only=True,
         verbose=1,
@@ -269,18 +270,19 @@ callbacks = [
         verbose=1,
     ),
     tf.keras.callbacks.TensorBoard(
-        log_dir=LOGS_DIR,
+        log_dir=os.path.join(LOGS_DIR, MODEL_ARCHITECTURE),
         histogram_freq=1,
     ),
 ]
 
-print("✓ Callbacks configured")
+print(f"✓ Callbacks configured")
+print(f"  Checkpoint: {best_model_path}")
 
 # ============================================================================
-# Step 9: Train (Fine-tune)
+# Step 9: Fine-tune model
 # ============================================================================
 print("\n" + "=" * 80)
-print("FINE-TUNING ON RSNA")
+print(f"FINE-TUNING {MODEL_ARCHITECTURE.upper()} ON RSNA")
 print("=" * 80)
 
 history = model.fit(
@@ -300,17 +302,11 @@ print("✓ Fine-tuning complete!")
 # ============================================================================
 print("\n[9/9] Saving fine-tuned model and metadata...")
 
-model_path = os.path.join(
-    FINETUNED_MODELS_DIR,
-    f"{MODEL_ARCHITECTURE}_rsna_final.keras"
-)
-model.save(model_path)
-print(f"✓ Final model saved: {model_path}")
+final_model_path = os.path.join(FINETUNED_MODEL_DIR, f"{MODEL_ARCHITECTURE}_rsna_final.keras")
+model.save(final_model_path)
+print(f"✓ Final model saved: {final_model_path}")
 
-weights_path = os.path.join(
-    FINETUNED_MODELS_DIR,
-    f"{MODEL_ARCHITECTURE}_rsna_weights.weights.h5"
-)
+weights_path = os.path.join(FINETUNED_MODEL_DIR, f"{MODEL_ARCHITECTURE}_rsna_weights.weights.h5")
 model.save_weights(weights_path)
 print(f"✓ Weights saved: {weights_path}")
 
@@ -335,34 +331,16 @@ metadata = {
     },
 }
 
-metadata_path = os.path.join(
-    FINETUNED_MODELS_DIR,
-    f"{MODEL_ARCHITECTURE}_rsna_metadata.json"
-)
+metadata_path = os.path.join(FINETUNED_MODEL_DIR, f"{MODEL_ARCHITECTURE}_rsna_metadata.json")
 with open(metadata_path, "w") as f:
     json.dump(metadata, f, indent=2)
 print(f"✓ Metadata saved: {metadata_path}")
-
-import shutil
-
-# Copy the best fine-tuned model to the main model path for evaluate.py and the Flask API
-best_model_src = os.path.join(FINETUNED_MODELS_DIR, f"{MODEL_ARCHITECTURE}_rsna_best.keras")
-main_model_dst = "models/pneumonia_model.keras"
-if os.path.exists(best_model_src):
-    # Backup existing baseline if it hasn't been backed up already
-    baseline_backup = "models/pneumonia_model_baseline.keras"
-    if os.path.exists(main_model_dst) and not os.path.exists(baseline_backup):
-        shutil.copy2(main_model_dst, baseline_backup)
-        print(f"✓ Backed up original baseline model to: {baseline_backup}")
-    
-    shutil.copy2(best_model_src, main_model_dst)
-    print(f"✓ Copied best fine-tuned model to: {main_model_dst}")
 
 # ============================================================================
 # Summary
 # ============================================================================
 print("\n" + "=" * 80)
-print("FINE-TUNING SUMMARY")
+print(f"FINE-TUNING SUMMARY: {MODEL_ARCHITECTURE.upper()}")
 print("=" * 80)
 print(f"\n📊 Final Metrics:")
 print(f"  Training Accuracy:   {history.history['accuracy'][-1]:.4f}")
@@ -371,19 +349,9 @@ print(f"  Validation AUC:      {history.history['val_auc'][-1]:.4f}")
 print(f"  Validation Precision: {history.history['val_precision'][-1]:.4f}")
 print(f"  Validation Recall:   {history.history['val_recall'][-1]:.4f}")
 
-print(f"\n🔄 Transfer Learning Pipeline:")
-print(f"  1. ImageNet (pre-trained base models)")
-print(f"  2. ChestX-ray14 (domain pretraining)")
-print(f"  3. RSNA (task-specific fine-tuning) ✓ COMPLETE")
-
 print(f"\n💾 Saved Artifacts:")
-print(f"  1. Final model:       {model_path}")
-print(f"  2. Model weights:     {weights_path}")
-print(f"  3. Metadata:          {metadata_path}")
-
-print(f"\n📝 Next Steps:")
-print(f"  1. Evaluate on test set: python evaluate.py")
-print(f"  2. Deploy to Flask API: python app.py")
-print(f"  3. Export for production (ONNX/TFLite)")
-
-print("\n" + "=" * 80)
+print(f"  1. Best model:        {best_model_path}")
+print(f"  2. Final model:       {final_model_path}")
+print(f"  3. Model weights:     {weights_path}")
+print(f"  4. Metadata:          {metadata_path}")
+print("=" * 80)

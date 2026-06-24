@@ -21,6 +21,7 @@ FILES_TO_UPLOAD = {
     # App code & config
     "app.py": "app.py",
     "requirements.txt": "requirements.txt",
+    ".gitattributes": ".gitattributes",
 }
 
 def main():

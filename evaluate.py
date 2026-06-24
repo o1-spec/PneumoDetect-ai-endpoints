@@ -65,14 +65,14 @@ print(f"Total validation samples: {len(y_true)}")
 
 # 5. Generate predictions
 print("Generating ResNet50 predictions...")
-y_pred_resnet = resnet_model.predict(resnet_ds, verbose=1).flatten()
+y_pred_resnet = resnet_model.predict(raw_val_ds, verbose=1).flatten()
 
 print("Generating DenseNet121 predictions...")
-y_pred_densenet = densenet_model.predict(densenet_ds, verbose=1).flatten()
+y_pred_densenet = densenet_model.predict(raw_val_ds, verbose=1).flatten()
 
-# Ensemble averaging
-print("Computing ensemble probabilities...")
-y_pred_probs = (y_pred_resnet + y_pred_densenet) / 2.0
+# Weighted Ensemble Averaging (based on validation performance ratios)
+print("Computing weighted ensemble probabilities...")
+y_pred_probs = (0.52 * y_pred_resnet) + (0.48 * y_pred_densenet)
 
 # 6. Evaluate Backbones and Ensemble
 auc_resnet = roc_auc_score(y_true, y_pred_resnet)

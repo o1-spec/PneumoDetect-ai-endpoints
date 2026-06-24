@@ -1,0 +1,25 @@
+{
+  "architecture": "resnet50",
+  "image_size": [
+    224,
+    224
+  ],
+  "batch_size": 32,
+  "epochs": 20,
+  "finetune_lr": 1e-05,
+  "pretrained_from": "ChestX-ray14",
+  "pretrained_weights": "models/pretrained/resnet50/resnet50_chestxray14_weights.weights.h5",
+  "class_weights": {
+    "0": 0.6454226629580361,
+    "1": 2.219126819126819
+  },
+  "final_metrics": {
+    "train_accuracy": 0.7761850953102112,
+    "train_loss": 0.43459784984588623,
+    "val_accuracy": 0.7985382080078125,
+    "val_loss": 0.4292641282081604,
+    "val_auc": 0.8517957925796509,
+    "val_precision": 0.5407312512397766,
+    "val_recall": 0.7013311386108398
+  }
+}

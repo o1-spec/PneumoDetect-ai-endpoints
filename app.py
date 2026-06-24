@@ -16,7 +16,7 @@ RESNET_PATH = "models/finetuned/resnet50/resnet50_rsna_best.keras"
 DENSENET_PATH = "models/finetuned/densenet121/densenet121_rsna_best.keras"
 
 IMG_SIZE = (224, 224)
-THRESHOLD = 0.45  # Optimized threshold can be customized or loaded from metadata
+THRESHOLD = 0.50  # Optimized threshold found by evaluation grid search
 
 # Global model pointers
 resnet_model = None
@@ -170,20 +170,18 @@ def predict():
         image = Image.open(file).convert("RGB")
         resized_image = image.resize(IMG_SIZE)
 
-        # 1. ResNet50 Preprocessing and Prediction
-        resnet_img = np.array(resized_image)
-        resnet_img = np.expand_dims(resnet_img, axis=0)
-        resnet_preprocessed = tf.keras.applications.resnet50.preprocess_input(resnet_img)
-        pred_resnet = float(resnet_model.predict(resnet_preprocessed)[0][0])
+        # Prepare raw image array (inputs to the model graph are raw pixel values [0, 255])
+        raw_img = np.array(resized_image, dtype=np.float32)
+        raw_img = np.expand_dims(raw_img, axis=0)
 
-        # 2. DenseNet121 Preprocessing and Prediction
-        densenet_img = np.array(resized_image)
-        densenet_img = np.expand_dims(densenet_img, axis=0)
-        densenet_preprocessed = tf.keras.applications.densenet.preprocess_input(densenet_img)
-        pred_densenet = float(densenet_model.predict(densenet_preprocessed)[0][0])
+        # 1. ResNet50 Prediction
+        pred_resnet = float(resnet_model.predict(raw_img)[0][0])
 
-        # 3. Ensemble Averaging
-        ensemble_pred = (pred_resnet + pred_densenet) / 2.0
+        # 2. DenseNet121 Prediction
+        pred_densenet = float(densenet_model.predict(raw_img)[0][0])
+
+        # 3. Weighted Ensemble Combination
+        ensemble_pred = (0.52 * pred_resnet) + (0.48 * pred_densenet)
 
         # Classify based on the threshold
         if ensemble_pred > THRESHOLD:
@@ -195,10 +193,10 @@ def predict():
 
         # 4. Programmatic, robust Grad-CAM Heatmap generation
         resnet_heatmap = make_gradcam_heatmap(
-            resnet_preprocessed, resnet_base_grad_model, resnet_head_model
+            raw_img, resnet_base_grad_model, resnet_head_model
         )
         densenet_heatmap = make_gradcam_heatmap(
-            densenet_preprocessed, densenet_base_grad_model, densenet_head_model
+            raw_img, densenet_base_grad_model, densenet_head_model
         )
 
         # 5. Weighted combination of heatmaps based on validation performance

@@ -17,7 +17,7 @@ LOGS_DIR = "logs/finetune"
 # ARCHITECTURE CONFIGURATION (MUST MATCH PRETRAINING)
 # ============================================================================
 # Toggle between "resnet50" and "densenet121"
-MODEL_ARCHITECTURE = "resnet50"  # Options: resnet50, densenet121
+MODEL_ARCHITECTURE = "densenet121"  # Options: resnet50, densenet121
 
 # Hyperparameters
 IMG_SIZE = (224, 224)
@@ -218,6 +218,20 @@ model.compile(
 )
 
 print(f"✓ Model compiled (lr={FINETUNE_LR})")
+
+# Check if a previous fine-tuning checkpoint exists to resume
+best_model_path = os.path.join(FINETUNED_MODEL_DIR, f"{MODEL_ARCHITECTURE}_rsna_best.keras")
+if os.path.exists(best_model_path):
+    print("\n" + "=" * 80)
+    print(f"✓ Found existing fine-tuning checkpoint: {best_model_path}")
+    print("Loading weights to resume fine-tuning...")
+    try:
+        model.load_weights(best_model_path)
+        print("✓ Weights loaded successfully!")
+    except Exception as e:
+        print(f"⚠ Failed to load weights: {e}. Starting fine-tuning from pre-trained weights.")
+    print("=" * 80 + "\n")
+
 model.summary()
 
 # ============================================================================

@@ -17,7 +17,7 @@ LOGS_DIR = "logs/pretrain"
 # ARCHITECTURE CONFIGURATION
 # ============================================================================
 # Toggle between "resnet50" and "densenet121"
-MODEL_ARCHITECTURE = "resnet50"  # Options: resnet50, densenet121
+MODEL_ARCHITECTURE = "densenet121"  # Options: resnet50, densenet121
 
 # Hyperparameters
 IMG_SIZE = (224, 224)

@@ -1,0 +1,25 @@
+{
+  "architecture": "densenet121",
+  "image_size": [
+    224,
+    224
+  ],
+  "batch_size": 32,
+  "epochs": 20,
+  "finetune_lr": 1e-05,
+  "pretrained_from": "ChestX-ray14",
+  "pretrained_weights": "models/pretrained/densenet121/densenet121_chestxray14_weights.weights.h5",
+  "class_weights": {
+    "0": 0.6454226629580361,
+    "1": 2.219126819126819
+  },
+  "final_metrics": {
+    "train_accuracy": 0.7404440641403198,
+    "train_loss": 0.5173059701919556,
+    "val_accuracy": 0.7991004586219788,
+    "val_loss": 0.43762481212615967,
+    "val_auc": 0.8521748781204224,
+    "val_precision": 0.540473222732544,
+    "val_recall": 0.722129762172699
+  }
+}

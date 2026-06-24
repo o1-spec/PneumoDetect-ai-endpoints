@@ -1,0 +1,28 @@
+{
+  "architecture": "resnet50",
+  "image_size": [
+    224,
+    224
+  ],
+  "batch_size": 32,
+  "epochs": 4,
+  "initial_lr": 0.0001,
+  "class_weights": {
+    "NORMAL": 0.5111938754396855,
+    "PNEUMONIA": 22.833641404805913
+  },
+  "dataset": "ChestX-ray14",
+  "dataset_sizes": {
+    "train_normal": 48330,
+    "train_pneumonia": 1082,
+    "val_normal": 12082,
+    "val_pneumonia": 271
+  },
+  "final_metrics": {
+    "train_accuracy": 0.6589087843894958,
+    "train_loss": 0.6352599263191223,
+    "val_accuracy": 0.7089775800704956,
+    "val_loss": 0.5700528025627136,
+    "val_auc": 0.7563568353652954
+  }
+}
